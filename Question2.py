@@ -1,0 +1,119 @@
+# Renita Kurian
+# Test 1 - Python - Question 2
+
+import pandas as pd
+import numpy as np
+from haversine import haversine, Unit
+import math
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+import folium
+from folium.plugins import HeatMap
+
+import multiprocessing
+from multiprocessing import Pool
+
+data = pd.read_csv("combined_trajectories.csv")
+print("Data successfully read")
+#data.head()
+
+# Calculate distance in kilometres
+def getDistance(loc1, loc2):
+  return round(haversine(loc1, loc2, unit='km'), 3)
+
+#getDistance((45.7597, 4.8422), (48.8567, 2.3508))
+
+# Calculate distance for each trajectory
+def calcDistanceForTrajectory(tData):
+  distance = 0.0
+  for i in range(len(tData)-1):
+    #print(userData.iloc[i])
+    lat1 = tData.iloc[i][0]
+    lon1 = tData.iloc[i][1]
+    lat2 = tData.iloc[i+1][0]
+    lon2 = tData.iloc[i+1][1]
+    #print(lat1, lon1, lat2, lon2)
+        
+    distance = distance + getDistance((lat1,lon1),(lat2, lon2))
+
+  return distance
+
+
+# Calculate the total distance for each user and return a dictionary
+def calcTotalDistance(data):
+  total_distance = {}
+  with Pool() as pool:
+    for user_id in data.individual_id.unique():
+      userData = data[data.individual_id == user_id]
+      #print(userData.head())
+      dataByTrajectories = [userData[userData.trajectory_id == trajectory ] 
+                            for trajectory in userData.trajectory_id.unique()]
+      #print(dataByTrajectories)
+      distances = pool.map(calcDistanceForTrajectory, dataByTrajectories)
+      print(sum(distances))
+      total_distance[user_id] = sum(distances)
+    return total_distance
+  
+total_distance = calcTotalDistance(data)
+print(total_distance)
+
+#-----------------------------------------------------------Part II----------------------------------------------------
+
+# Filter data to only get location points from Beijing City
+def getBeijingData(data):
+  # Define city boundaries
+  lat_min = 39.4428 #southmost lat
+  lat_max = 41.0619 #northmost lat
+  lon_min = 115.4204 #westernmost
+  lon_max = 116.7815 #easternmost 
+  
+  # Filter data
+  df_filtered = data.loc[(data['latitude'] >= lat_min) &
+                         (data['latitude'] <= lat_max) & 
+                         (data['longitude'] >= lon_min) & 
+                         (data['longitude'] <= lon_max)]
+
+  return df_filtered
+
+def temporal_analysis(df):
+  df["time"] = pd.to_datetime(df["time"], format= '%H:%M:%S')
+  df.set_index("time", inplace=True)
+  #print(df.head())
+  data_resampled = df.resample("H").size()
+  #print(data_resampled.describe())
+
+  axis = pd.to_datetime(data_resampled.index)
+  axis = axis.hour
+  print(axis)
+
+  plt.figure(figsize = (10,5))
+  plt.plot(axis, data_resampled.values)
+  plt.title("Number of Data Points over Time")
+  plt.xlabel("Time")
+  plt.ylabel("Number of Data Points")
+  plt.show()
+
+
+df = pd.read_csv("combined_trajectories.csv")
+print("Data successfully read")
+df = getBeijingData(df)
+print("Data successfully filtered")
+
+
+# Create a map centered on Beijing City
+map = folium.Map(location=[39.9042, 116.4074], zoom_start=11)
+filtered_data = getBeijingData(data)
+print("Successfully filtered data")
+
+temporal_analysis(filtered_data)
+
+# Create a heatmap layer using the filtered data
+heatmap = HeatMap(data=filtered_data[["latitude", "longitude"]], radius=15)
+# Add the heatmap layer to the map
+heatmap.add_to(map)
+# Save the map as an HTML file
+map.save("beijing_heatmap.html")
+
+
+  
